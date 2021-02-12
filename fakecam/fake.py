@@ -19,6 +19,7 @@ import os
 import fnmatch
 import time
 import threading
+import subprocess
 
 from akvcam import AkvCameraWriter
 
@@ -380,9 +381,11 @@ def sigint_handler(loop, cam, signal, frame):
     asyncio.ensure_future(cam.load_images())
 
 
-def sigquit_handler(loop, cam, signal, frame):
+def sigquit_handler(loop, cam, bodypix, signal, frame):
     print("Killing fake cam process")
     cam.stop()
+    print("Killing bodypix process...")
+    bodypix.kill()
     sys.exit(0)
 
 def getNextOddNumber(number):
@@ -392,6 +395,12 @@ def getNextOddNumber(number):
 
 def main():
     args = parse_args()
+
+    # Start the bodypix server
+    bodypixpath=os.path.join(os.path.split(os.path.split(sys.argv[0])[0])[0], "bodypix", "app.js")
+    bodypix=subprocess.Popen(["node", bodypixpath], env={"BPSEGTHRES": "0.8"})
+    time.sleep(1) # Give it a moment to start
+
     cam = FakeCam(
         fps=args.fps,
         width=args.width,
@@ -413,13 +422,12 @@ def main():
         use_akvcam=args.akvcam)
     loop = asyncio.get_event_loop()
     signal.signal(signal.SIGINT, partial(sigint_handler, loop, cam))
-    signal.signal(signal.SIGQUIT, partial(sigquit_handler, loop, cam))
+    signal.signal(signal.SIGQUIT, partial(sigquit_handler, loop, cam, bodypix))
     print("Running...")
     print("Please CTRL-C to reload the background / foreground images")
     print("Please CTRL-\ to exit")
     # frames forever
     loop.run_until_complete(cam.run())
-
 
 if __name__ == "__main__":
     main()
